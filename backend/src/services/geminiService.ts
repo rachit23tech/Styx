@@ -50,15 +50,20 @@ export async function categorizeExpense(
     if (!model) {
         // Deterministic mock fallback when Gemini API key is missing
         const descUpper = description.toUpperCase();
-        let selectedCategory = fallbackCategory;
-        if (descUpper.includes("SWIGGY") || descUpper.includes("ZOMATO") || descUpper.includes("REST") || descUpper.includes("FOOD") || descUpper.includes("DINER") || descUpper.includes("COFFEE") || descUpper.includes("STARBUCKS")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("food")) || fallbackCategory;
-        } else if (descUpper.includes("UBER") || descUpper.includes("OLA") || descUpper.includes("CAB") || descUpper.includes("FUEL") || descUpper.includes("PETROL")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("transport")) || fallbackCategory;
-        } else if (descUpper.includes("BILL") || descUpper.includes("POWER") || descUpper.includes("WIFI") || descUpper.includes("INTERNET")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("util")) || fallbackCategory;
-        } else if (descUpper.includes("AMAZON") || descUpper.includes("SHOP") || descUpper.includes("STORE") || descUpper.includes("CLOTH")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("shop")) || fallbackCategory;
+        let selectedCategory = "General";
+
+        if (descUpper.includes("IRCTC") || descUpper.includes("RAIL") || descUpper.includes("TRAIN") || descUpper.includes("UBER") || descUpper.includes("OLA") || descUpper.includes("CAB") || descUpper.includes("FUEL") || descUpper.includes("PETROL") || descUpper.includes("METRO") || descUpper.includes("FLIGHT") || descUpper.includes("INDIGO") || descUpper.includes("MAKEMYTRIP") || descUpper.includes("IXIGO") || descUpper.includes("BUS")) {
+            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("transport") || c.toLowerCase().includes("travel")) || "Transportation";
+        } else if (descUpper.includes("SWIGGY") || descUpper.includes("ZOMATO") || descUpper.includes("REST") || descUpper.includes("FOOD") || descUpper.includes("DINER") || descUpper.includes("COFFEE") || descUpper.includes("STARBUCKS") || descUpper.includes("PIZZA") || descUpper.includes("DOMINOS")) {
+            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("food") || c.toLowerCase().includes("dining")) || "Food & Dining";
+        } else if (descUpper.includes("BILL") || descUpper.includes("POWER") || descUpper.includes("WIFI") || descUpper.includes("INTERNET") || descUpper.includes("AIRTEL") || descUpper.includes("JIO") || descUpper.includes("ELECTRICITY")) {
+            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("util")) || "Utilities";
+        } else if (descUpper.includes("AMAZON") || descUpper.includes("FLIPKART") || descUpper.includes("SHOP") || descUpper.includes("STORE") || descUpper.includes("CLOTH") || descUpper.includes("MYNTRA")) {
+            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("shop")) || "Shopping";
+        } else if (descUpper.includes("NETFLIX") || descUpper.includes("SPOTIFY") || descUpper.includes("CINEMA") || descUpper.includes("MOVIE") || descUpper.includes("BOOKMYSHOW")) {
+            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("entertain")) || "Entertainment";
+        } else {
+            selectedCategory = availableCategories.find(c => c.toLowerCase() === "general") || availableCategories[0] || "General";
         }
 
         return {
@@ -69,19 +74,21 @@ export async function categorizeExpense(
     }
 
     try {
-        const prompt = `You are an expert expense classification assistant.
-Categorize the following transaction into EXACTLY ONE of the provided allowed categories.
-Do NOT invent new categories. Reply ONLY with the exact matching category name from the list, nothing else.
+        const prompt = `You are an expert financial expense classification assistant.
+Categorize the following transaction into the most appropriate category based on merchant intent (e.g. IRCTC = Transportation, Swiggy = Food & Dining, Amazon = Shopping).
+
+Preferred Categories: ${JSON.stringify(availableCategories)}
 
 Transaction Description: "${description}"
 Amount: ${amount}
-Allowed Categories: ${JSON.stringify(availableCategories)}
+
+Reply ONLY with the exact single category name (e.g., Transportation, Food & Dining, Shopping, Utilities, Entertainment, Healthcare, General). Do not add explanations or extra words.
 
 Category:`;
 
         const result = await model.generateContent(prompt);
         const latencyMs = Date.now() - startTime;
-        const responseText = result.response.text().trim();
+        let responseText = result.response.text().trim().replace(/^category:\s*/i, '').replace(/["']/g, '');
 
         const usageMetadata = result.response.usageMetadata;
         const promptTokens = usageMetadata?.promptTokenCount || Math.ceil(prompt.length / 4);
@@ -89,8 +96,8 @@ Category:`;
         const matchedCategory = availableCategories.find(
             c => c.toLowerCase() === responseText.toLowerCase()
         ) || availableCategories.find(
-            c => responseText.toLowerCase().includes(c.toLowerCase())
-        ) || fallbackCategory;
+            c => responseText.toLowerCase().includes(c.toLowerCase()) || c.toLowerCase().includes(responseText.toLowerCase())
+        ) || responseText || "General";
 
         return {
             categoryName: matchedCategory,
@@ -100,7 +107,7 @@ Category:`;
     } catch (error: any) {
         console.error("Gemini API Error:", error.message || error);
         return {
-            categoryName: fallbackCategory,
+            categoryName: availableCategories.find(c => c.toLowerCase() === "general") || availableCategories[0] || "General",
             promptTokens: Math.ceil(description.length / 4) + 10,
             latencyMs: Date.now() - startTime
         };

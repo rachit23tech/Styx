@@ -82,9 +82,29 @@ export async function categorize(description: string, amount: number): Promise<C
     const categoryNames = categories.map(c => c.name);
     const geminiResult = await geminiCategorize(description, amount, categoryNames);
 
-    const matchedCat = categories.find(
+    let matchedCat = categories.find(
         c => c.name.toLowerCase() === geminiResult.categoryName.toLowerCase()
-    ) || categories[0];
+    ) || categories.find(
+        c => geminiResult.categoryName.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(geminiResult.categoryName.toLowerCase())
+    );
+
+    // If category does not exist in MongoDB yet, auto-create it dynamically based on expense intent!
+    if (!matchedCat && geminiResult.categoryName) {
+        const cleanName = geminiResult.categoryName.trim();
+        let newCatDoc = await Category.findOne({ name: new RegExp(`^${cleanName}$`, "i") });
+        if (!newCatDoc) {
+            newCatDoc = await Category.create({ name: cleanName });
+            invalidateCategorizerCache();
+        }
+        matchedCat = {
+            _id: newCatDoc._id,
+            name: newCatDoc.name
+        };
+    }
+
+    if (!matchedCat) {
+        matchedCat = categories[0];
+    }
 
     // Log the LLM fallback call
     const log = new LlmFallbackLog({
