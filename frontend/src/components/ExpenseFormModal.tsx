@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Category, Expense } from '../types';
-import { X, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 
 interface ExpenseFormModalProps {
   isOpen: boolean;
@@ -176,10 +176,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
               {isSubmitting ? (
-                <>
-                  <Sparkles size={16} className="spin" style={{ marginRight: '6px' }} />
-                  Saving...
-                </>
+                'Saving...'
               ) : initialData ? (
                 'Update Expense'
               ) : (

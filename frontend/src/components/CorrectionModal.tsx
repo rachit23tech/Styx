@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Category, Expense, CorrectionResponse } from '../types';
-import { X, Sparkles } from 'lucide-react';
+import { X } from 'lucide-react';
 import { correctExpense } from '../api/client';
 
 interface CorrectionModalProps {
@@ -83,8 +83,7 @@ export const CorrectionModal: React.FC<CorrectionModalProps> = ({
         )}
 
         {promotionNotice && (
-          <div style={{ padding: '10px 14px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: '8px', marginBottom: '16px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Sparkles size={16} />
+          <div style={{ padding: '10px 14px', background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
             {promotionNotice}
           </div>
         )}

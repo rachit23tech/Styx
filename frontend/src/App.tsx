@@ -18,7 +18,6 @@ import { CorrectionModal } from './components/CorrectionModal';
 import { LlmLogViewer } from './components/LlmLogViewer';
 import { SpendingAdvisorCard } from './components/SpendingAdvisorCard';
 import { ReportsView } from './components/ReportsView';
-import { Sparkles } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState<string>(
@@ -146,20 +145,16 @@ export const App: React.FC = () => {
         <div
           style={{
             marginBottom: '20px',
-            padding: '12px 18px',
+            padding: '12px 16px',
             background: '#ecfdf5',
             border: '1px solid #a7f3d0',
             color: '#047857',
             borderRadius: '10px',
             fontSize: '13px',
             fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.1)',
           }}
         >
-          <Sparkles size={16} />
           {toastMessage}
         </div>
       )}

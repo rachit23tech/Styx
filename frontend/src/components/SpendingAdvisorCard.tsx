@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { StatsSummary, AdvisorExplanation } from '../types';
 import { fetchStatsSummary, fetchAdvisorExplanation } from '../api/client';
-import { Sparkles, Lightbulb, TrendingUp } from 'lucide-react';
+import { Lightbulb, TrendingUp } from 'lucide-react';
 
 interface SpendingAdvisorCardProps {
   currentMonth: string;
@@ -150,7 +150,7 @@ export const SpendingAdvisorCard: React.FC<SpendingAdvisorCardProps> = ({ curren
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-teal)', fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>
-            <Sparkles size={16} /> Gemini 1.5 Flash Advice
+            Gemini 1.5 Flash Advice
           </div>
           <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-primary)', marginBottom: '12px' }}>
             {advisorData.explanation}

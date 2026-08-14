@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Expense } from '../types';
-import { Trash2, Edit2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Trash2, Edit2, CheckCircle2 } from 'lucide-react';
 
 interface ExpenseListProps {
   expenses: Expense[];
@@ -89,7 +89,7 @@ export const ExpenseList: React.FC<ExpenseListProps> = ({
                           }}
                           title="Auto-categorized by Rule/LLM engine"
                         >
-                          <Sparkles size={10} /> Auto
+                          Auto
                         </span>
                       )}
                     </div>
