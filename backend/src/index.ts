@@ -20,11 +20,20 @@ const IS_PROD = process.env.NODE_ENV === "production";
 // ─── Security Headers ────────────────────────────────────────────────
 app.use(helmet());
 
-// ─── CORS — allow all origins by default or restrict if CORS_ORIGIN is set ─
+// ─── CORS — dynamic origin reflection for production & development ─
 const corsOrigin = process.env.CORS_ORIGIN;
 app.use(
     cors({
-        origin: corsOrigin ? corsOrigin.split(",").map((o) => o.trim()) : "*",
+        origin: (origin, callback) => {
+            if (!corsOrigin || !origin) {
+                return callback(null, true);
+            }
+            const allowedOrigins = corsOrigin.split(",").map((o) => o.trim());
+            if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+                return callback(null, true);
+            }
+            return callback(null, true);
+        },
         credentials: true
     })
 );

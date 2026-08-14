@@ -8,7 +8,7 @@ if (rawBase && !rawBase.startsWith('/') && !rawBase.startsWith('http://') && !ra
 const cleanBase = rawBase.replace(/\/$/, '');
 const API_BASE = cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`;
 
-async function safeFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+async function safeFetchJson<T>(url: string, options?: RequestInit, isRetry = false): Promise<T> {
   try {
     const res = await fetch(url, options);
     const contentType = res.headers.get('content-type') || '';
@@ -27,9 +27,14 @@ async function safeFetchJson<T>(url: string, options?: RequestInit): Promise<T> 
     }
     return json;
   } catch (err: any) {
+    if ((err.message === 'Failed to fetch' || err.name === 'TypeError') && !isRetry) {
+      // Auto-retry once after 1.5s in case backend container was waking up from sleep
+      await new Promise(r => setTimeout(r, 1500));
+      return safeFetchJson<T>(url, options, true);
+    }
     if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
       throw new Error(
-        `Failed to connect to backend server. If using Render free tier, the server may be waking up from sleep (~30s), or VITE_API_BASE_URL is invalid (${API_BASE}).`
+        `Failed to connect to backend server. If using Render free tier, please wait 15–30 seconds for the server to wake up from sleep, then refresh.`
       );
     }
     throw err;
