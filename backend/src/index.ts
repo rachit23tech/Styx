@@ -20,14 +20,13 @@ const IS_PROD = process.env.NODE_ENV === "production";
 // ─── Security Headers ────────────────────────────────────────────────
 app.use(helmet());
 
-// ─── CORS — restrict origins in production ───────────────────────────
+// ─── CORS — allow all origins by default or restrict if CORS_ORIGIN is set ─
 const corsOrigin = process.env.CORS_ORIGIN;
 app.use(
-    cors(
-        corsOrigin
-            ? { origin: corsOrigin.split(",").map((o) => o.trim()), credentials: true }
-            : undefined // allow all in development when CORS_ORIGIN is unset
-    )
+    cors({
+        origin: corsOrigin ? corsOrigin.split(",").map((o) => o.trim()) : "*",
+        credentials: true
+    })
 );
 
 // ─── Body Parsing — capped at 16KB to prevent memory exhaustion ──────

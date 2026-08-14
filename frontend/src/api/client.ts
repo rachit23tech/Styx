@@ -1,27 +1,39 @@
 import { CategorizationRule, Category, CorrectionResponse, Expense, LlmFallbackLog, StatsSummary, AdvisorExplanation } from '../types';
 
-// Normalize API_BASE: ensure it ends with /api (e.g., handles "https://styx.onrender.com" -> "https://styx.onrender.com/api")
-const rawBase = import.meta.env.VITE_API_BASE_URL || '/api';
+// Normalize API_BASE: auto-prepend https:// if missing, and ensure it ends with /api
+let rawBase = (import.meta.env.VITE_API_BASE_URL || '/api').trim();
+if (rawBase && !rawBase.startsWith('/') && !rawBase.startsWith('http://') && !rawBase.startsWith('https://')) {
+  rawBase = `https://${rawBase}`;
+}
 const cleanBase = rawBase.replace(/\/$/, '');
 const API_BASE = cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`;
 
 async function safeFetchJson<T>(url: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(url, options);
-  const contentType = res.headers.get('content-type') || '';
-  
-  if (!contentType.includes('application/json')) {
-    const text = await res.text();
-    if (text.trim().startsWith('<')) {
-      throw new Error(`Backend returned HTML page (404/500). Please verify VITE_API_BASE_URL is set to your live backend endpoint (e.g. https://your-backend.onrender.com/api).`);
+  try {
+    const res = await fetch(url, options);
+    const contentType = res.headers.get('content-type') || '';
+    
+    if (!contentType.includes('application/json')) {
+      const text = await res.text();
+      if (text.trim().startsWith('<')) {
+        throw new Error(`Backend returned HTML page (404/500). Please verify VITE_API_BASE_URL is set to your live backend endpoint (e.g. https://your-backend.onrender.com/api).`);
+      }
+      throw new Error(text || `Server returned non-JSON response (HTTP ${res.status})`);
     }
-    throw new Error(text || `Server returned non-JSON response (HTTP ${res.status})`);
-  }
 
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error(json.error || `HTTP ${res.status} error occurred.`);
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json.error || `HTTP ${res.status} error occurred.`);
+    }
+    return json;
+  } catch (err: any) {
+    if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+      throw new Error(
+        `Failed to connect to backend server. If using Render free tier, the server may be waking up from sleep (~30s), or VITE_API_BASE_URL is invalid (${API_BASE}).`
+      );
+    }
+    throw err;
   }
-  return json;
 }
 
 export async function fetchCategories(): Promise<Category[]> {
