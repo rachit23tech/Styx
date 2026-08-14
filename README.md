@@ -1,4 +1,4 @@
-# Styx — Smart Expense Tracker & Financial Analytics Platform
+# Styx — Smart Expense Tracker
 
 Styx is an intelligent personal financial management platform that combines deterministic pattern matching, adaptive user feedback loops, and LLM-assisted analysis to automate expense categorization and deliver spending insights.
 
