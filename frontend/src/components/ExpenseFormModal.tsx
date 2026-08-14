@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Category, Expense } from '../types';
-import { X } from 'lucide-react';
+import { X, Sparkles } from 'lucide-react';
 
 interface ExpenseFormModalProps {
   isOpen: boolean;
@@ -26,7 +26,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [categoryId, setCategoryId] = useState('');
+  const [categoryId, setCategoryId] = useState('auto');
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -43,7 +43,7 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
       setAmount('');
       setDescription('');
       setDate(new Date().toISOString().split('T')[0]);
-      if (categories.length > 0) setCategoryId(categories[0]._id);
+      setCategoryId('auto');
       setPaymentMethod('UPI');
     }
     setError('');
@@ -62,10 +62,6 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
     }
     if (!description.trim()) {
       setError('Description is required');
-      return;
-    }
-    if (!categoryId) {
-      setError('Please select a category');
       return;
     }
 
@@ -134,8 +130,12 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               className="form-control"
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
-              required
             >
+              {!initialData && (
+                <option value="auto">
+                  Auto-Categorize (Rule / Gemini AI)
+                </option>
+              )}
               {categories.map((cat) => (
                 <option key={cat._id} value={cat._id}>
                   {cat.name}
@@ -175,7 +175,16 @@ export const ExpenseFormModal: React.FC<ExpenseFormModalProps> = ({
               Cancel
             </button>
             <button type="submit" className="btn btn-primary" disabled={isSubmitting}>
-              {isSubmitting ? 'Saving...' : initialData ? 'Update Expense' : 'Save Expense'}
+              {isSubmitting ? (
+                <>
+                  <Sparkles size={16} className="spin" style={{ marginRight: '6px' }} />
+                  Saving...
+                </>
+              ) : initialData ? (
+                'Update Expense'
+              ) : (
+                'Save Expense'
+              )}
             </button>
           </div>
         </form>

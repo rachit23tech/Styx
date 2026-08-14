@@ -62,7 +62,7 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
         </div>
 
         {error && (
-          <div style={{ padding: '10px 14px', background: 'rgba(244, 63, 94, 0.15)', border: '1px solid rgba(244, 63, 94, 0.3)', color: '#f43f5e', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
+          <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecdd3', color: '#f43f5e', borderRadius: '8px', marginBottom: '16px', fontSize: '13px' }}>
             {error}
           </div>
         )}
@@ -75,12 +75,12 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
           />
-          <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }} disabled={isAdding}>
+          <button type="submit" className="btn btn-teal" style={{ whiteSpace: 'nowrap' }} disabled={isAdding}>
             <Plus size={16} /> Add
           </button>
         </form>
 
-        <h4 style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8', marginBottom: '12px' }}>Existing Categories</h4>
+        <h4 style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '12px' }}>Existing Categories</h4>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '240px', overflowY: 'auto' }}>
           {categories.map((cat) => (
             <div
@@ -90,12 +90,12 @@ export const CategoryManagerModal: React.FC<CategoryManagerModalProps> = ({
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 padding: '10px 14px',
-                background: '#0f172a',
+                background: '#f8fafc',
                 borderRadius: '8px',
-                border: '1px solid #334155',
+                border: '1px solid #e2e8f0',
               }}
             >
-              <span style={{ fontWeight: 500 }}>{cat.name}</span>
+              <span style={{ fontWeight: 600, color: '#0f172a', fontSize: '14px' }}>{cat.name}</span>
               <button
                 className="btn btn-danger"
                 style={{ padding: '4px 8px' }}

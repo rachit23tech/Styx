@@ -1,10 +1,10 @@
-# Styx — Smart Expense Tracker & Analytics Engine
+# Styx — Smart Expense Tracker & Financial Analytics Platform
 
 Styx is an intelligent personal financial management platform that combines deterministic pattern matching, adaptive user feedback loops, and LLM-assisted analysis to automate expense categorization and deliver spending insights.
 
 ---
 
-## 🌟 Architecture & Key Features
+## 🌟 Key Features & Architecture
 
 ### 1. Hybrid Categorization Pipeline
 Styx uses a tiered categorization architecture designed for high throughput, low latency, and operational cost efficiency:
@@ -15,7 +15,18 @@ Styx uses a tiered categorization architecture designed for high throughput, low
 
 ### 2. Analytics & Spending Advisor
 - **Deterministic Metrics Computation**: Monthly totals, 3-month trailing averages, and Month-over-Month (MoM) percentage shifts are computed directly in MongoDB via native Aggregation Pipelines (`$group`, `$match`).
-- **AI Financial Insights**: Computed aggregate statistics (never raw transaction records) are passed to Google Gemini 1.5 Flash to generate actionable spending recommendations without hallucinating financial metrics.
+- **AI Financial Insights**: Computed aggregate statistics (never raw transaction records) are passed to Google Gemini 1.5 Flash to generate actionable spending recommendations without model hallucinations.
+
+---
+
+## 💡 System Design & Architectural Trade-Offs
+
+| Architectural Decision | Technical Rationale & Impact |
+| :--- | :--- |
+| **Rule Engine Priority** | **Cost & Latency Awareness**: Deterministic rules resolve recurring merchant transactions (e.g. Swiggy, Uber) in $<5\text{ms}$ with zero API cost, reserving LLM calls ($200-400\text{ms}$) solely for novel transactions. |
+| **Correction Feedback Loop ($N=3$)** | **Adaptive System Self-Improvement**: Tracks user overrides per pattern. Auto-promoting after 3 consistent corrections eliminates future redundant LLM calls without hardcoding rules manually. |
+| **Local MongoDB Aggregations for Stats** | **Accuracy & Reliability**: LLMs can hallucinate mathematical calculations. Computing totals, averages, and MoM percentages directly in MongoDB ensures 100% mathematical precision before feeding metrics to Gemini for natural-language synthesis. |
+| **LLM Telemetry Logging** | **Production Observability**: Logging `prompt_tokens`, `latency_ms`, and `response_category` builds audit trails to track API usage and system performance over time. |
 
 ---
 
@@ -54,6 +65,8 @@ Styx/
 ├── frontend/
 │   ├── src/                       # React dashboard components & UI
 │   └── package.json
+├── netlify.toml                   # Netlify deployment configuration
+├── package.json                   # Monorepo unified build scripts
 └── README.md
 ```
 
@@ -69,10 +82,10 @@ Styx/
 
 ---
 
-## ⚡ Getting Started
+## ⚡ Quick Start
 
 ### Prerequisites
-- Node.js (v18+)
+- Node.js (v20+)
 - MongoDB instance running locally on `mongodb://127.0.0.1:27017` or a MongoDB Atlas URI
 
 ### Installation & Running
@@ -91,18 +104,18 @@ Styx/
    GEMINI_API_KEY=your_gemini_api_key_here
    ```
 
-3. **Start the Backend**:
+3. **Install Dependencies & Build All Packages**:
    ```bash
-   cd backend
-   npm install
-   npm run dev
+   npm run build
    ```
 
-4. **Start the Frontend**:
+4. **Start Development Servers**:
    ```bash
-   cd frontend
-   npm install
-   npm run dev
+   # Terminal 1: Start Backend API
+   cd backend && npm run dev
+
+   # Terminal 2: Start Frontend Application
+   cd frontend && npm run dev
    ```
 
 ---
@@ -111,6 +124,5 @@ Styx/
 
 Run the automated integration test suite:
 ```bash
-cd backend
 npm test
 ```

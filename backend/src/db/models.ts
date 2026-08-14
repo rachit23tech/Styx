@@ -37,8 +37,8 @@ export interface ILlmFallbackLog extends Document {
 }
 
 const ExpenseSchema = new Schema<IExpense>({
-    amount: { type: Number, required: true },
-    description: { type: String, required: true },
+    amount: { type: Number, required: true, min: [0.01, 'Amount must be positive'] },
+    description: { type: String, required: true, maxlength: [500, 'Description too long'] },
     date: { type: Date, required: true },
     category_id: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
     payment_method: { type: String, required: true, default: 'Cash' },
@@ -46,10 +46,13 @@ const ExpenseSchema = new Schema<IExpense>({
     created_at: { type: Date, default: Date.now }
 });
 
+ExpenseSchema.index({ date: -1 });
+ExpenseSchema.index({ category_id: 1, date: -1 });
+
 export const Expense = mongoose.model<IExpense>('Expense', ExpenseSchema);
 
 const CategorySchema = new Schema<ICategory>({
-    name: { type: String, required: true, unique: true }
+    name: { type: String, required: true, unique: true, maxlength: [100, 'Category name too long'] }
 });
 
 export const Category = mongoose.model<ICategory>('Category', CategorySchema);
@@ -59,6 +62,8 @@ const CategorizationRuleSchema = new Schema<ICategorizationRule>({
     category_id: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
     confidence_score: { type: Number, default: 1 }
 });
+
+CategorizationRuleSchema.index({ pattern: 1 }, { unique: true });
 
 export const CategorizationRule = mongoose.model<ICategorizationRule>('CategorizationRule', CategorizationRuleSchema);
 
@@ -70,6 +75,8 @@ const CorrectionSchema = new Schema<ICorrection>({
     corrected_at: { type: Date, default: Date.now }
 });
 
+CorrectionSchema.index({ merchant_pattern: 1, new_category_id: 1 });
+
 export const Correction = mongoose.model<ICorrection>('Correction', CorrectionSchema);
 
 const LlmFallbackLogSchema = new Schema<ILlmFallbackLog>({
@@ -80,4 +87,7 @@ const LlmFallbackLogSchema = new Schema<ILlmFallbackLog>({
     created_at: { type: Date, default: Date.now }
 });
 
+LlmFallbackLogSchema.index({ created_at: -1 });
+
 export const LlmFallbackLog = mongoose.model<ILlmFallbackLog>('LlmFallbackLog', LlmFallbackLogSchema);
+
