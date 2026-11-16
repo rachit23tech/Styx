@@ -60,3 +60,8 @@ export interface AdvisorExplanation {
   latencyMs: number;
   promptTokens: number;
 }
+
+export interface AuthUser {
+  id: string;
+  email: string;
+}

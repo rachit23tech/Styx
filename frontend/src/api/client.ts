@@ -1,4 +1,4 @@
-import { CategorizationRule, Category, CorrectionResponse, Expense, LlmFallbackLog, StatsSummary, AdvisorExplanation } from '../types';
+import { AuthUser, CategorizationRule, Category, CorrectionResponse, Expense, LlmFallbackLog, StatsSummary, AdvisorExplanation } from '../types';
 
 // Normalize API_BASE: auto-prepend https:// if missing, and ensure it ends with /api
 let rawBase = (import.meta.env.VITE_API_BASE_URL || '/api').trim();
@@ -8,9 +8,42 @@ if (rawBase && !rawBase.startsWith('/') && !rawBase.startsWith('http://') && !ra
 const cleanBase = rawBase.replace(/\/$/, '');
 const API_BASE = cleanBase.endsWith('/api') ? cleanBase : `${cleanBase}/api`;
 
+// ─── Login token ─────────────────────────────────────────────────────
+// Kept in localStorage so a refresh keeps you signed in; falls back to
+// memory if storage is unavailable (private mode, blocked storage).
+const TOKEN_KEY = 'styx_token';
+let memoryToken: string | null = null;
+
+export function getToken(): string | null {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || memoryToken;
+  } catch {
+    return memoryToken;
+  }
+}
+
+export function setToken(token: string | null): void {
+  memoryToken = token;
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* storage unavailable — the in-memory copy is used */
+  }
+}
+
+// Called when the server says the session is no longer valid
+let onUnauthorized: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 async function safeFetchJson<T>(url: string, options?: RequestInit, isRetry = false): Promise<T> {
   try {
-    const res = await fetch(url, options);
+    const token = getToken();
+    const headers = new Headers(options?.headers);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const res = await fetch(url, { ...options, headers });
     const contentType = res.headers.get('content-type') || '';
     
     if (!contentType.includes('application/json')) {
@@ -23,6 +56,11 @@ async function safeFetchJson<T>(url: string, options?: RequestInit, isRetry = fa
 
     const json = await res.json();
     if (!res.ok) {
+      // An expired or invalid session on a protected endpoint sends the user back to login
+      if (res.status === 401 && !url.includes('/auth/login') && !url.includes('/auth/register')) {
+        setToken(null);
+        if (onUnauthorized) onUnauthorized();
+      }
       throw new Error(json.error || `HTTP ${res.status} error occurred.`);
     }
     return json;
@@ -41,6 +79,34 @@ async function safeFetchJson<T>(url: string, options?: RequestInit, isRetry = fa
   }
 }
 
+// ─── Accounts ────────────────────────────────────────────────────────
+async function authenticate(path: 'login' | 'register', email: string, password: string): Promise<AuthUser> {
+  const res = await safeFetchJson<{ token: string; user: AuthUser }>(`${API_BASE}/auth/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  setToken(res.token);
+  return res.user;
+}
+
+export function login(email: string, password: string): Promise<AuthUser> {
+  return authenticate('login', email, password);
+}
+
+export function register(email: string, password: string): Promise<AuthUser> {
+  return authenticate('register', email, password);
+}
+
+export async function fetchCurrentUser(): Promise<AuthUser> {
+  const res = await safeFetchJson<{ user: AuthUser }>(`${API_BASE}/auth/me`);
+  return res.user;
+}
+
+export function logout(): void {
+  setToken(null);
+}
+
 export async function fetchCategories(): Promise<Category[]> {
   return safeFetchJson<Category[]>(`${API_BASE}/categories`);
 }
@@ -57,10 +123,22 @@ export async function deleteCategory(id: string): Promise<void> {
   await safeFetchJson<any>(`${API_BASE}/categories/${id}`, { method: 'DELETE' });
 }
 
+// Loads every expense for the month, following pagination so months with
+// more than one page (200 rows) are not silently cut off.
 export async function fetchExpenses(month?: string): Promise<Expense[]> {
-  const url = month ? `${API_BASE}/expenses?month=${month}&limit=200` : `${API_BASE}/expenses?limit=200`;
-  const json = await safeFetchJson<any>(url);
-  return Array.isArray(json) ? json : (json.data || []);
+  const PAGE_SIZE = 200;
+  const MAX_PAGES = 50;
+  const all: Expense[] = [];
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE), page: String(page) });
+    if (month) params.set('month', month);
+    const json = await safeFetchJson<any>(`${API_BASE}/expenses?${params.toString()}`);
+    if (Array.isArray(json)) return json;
+    all.push(...(json.data || []));
+    const totalPages = json.pagination?.totalPages ?? 1;
+    if (page >= totalPages) break;
+  }
+  return all;
 }
 
 export async function createExpense(data: {
@@ -114,10 +192,11 @@ export async function fetchStatsSummary(month?: string): Promise<StatsSummary> {
   return safeFetchJson<StatsSummary>(url);
 }
 
-export async function fetchAdvisorExplanation(month?: string, statsSummary?: StatsSummary): Promise<{ statsSummary: StatsSummary; advisorExplanation: AdvisorExplanation }> {
+// The server computes the statistics itself; only the month is sent.
+export async function fetchAdvisorExplanation(month?: string, _statsSummary?: StatsSummary): Promise<{ statsSummary: StatsSummary; advisorExplanation: AdvisorExplanation }> {
   return safeFetchJson<{ statsSummary: StatsSummary; advisorExplanation: AdvisorExplanation }>(`${API_BASE}/stats/explain`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ month, statsSummary }),
+    body: JSON.stringify({ month }),
   });
 }

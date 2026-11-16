@@ -9,6 +9,7 @@ import {
   BarChart3,
   ChevronLeft,
   ChevronRight,
+  LogOut,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -19,6 +20,8 @@ interface NavbarProps {
   onOpenExpenseModal: () => void;
   onOpenCategoryModal: () => void;
   onOpenLlmLogsModal: () => void;
+  userEmail: string;
+  onLogout: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -29,6 +32,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenExpenseModal,
   onOpenCategoryModal,
   onOpenLlmLogsModal,
+  userEmail,
+  onLogout,
 }) => {
   const [yearStr, monthStr] = currentMonth.split('-');
   const dateObj = new Date(Number(yearStr), Number(monthStr) - 1, 1);
@@ -128,6 +133,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           <button className="btn btn-teal" onClick={onOpenExpenseModal} title="Add New Expense">
             <Plus size={16} /> Add Expense
+          </button>
+
+          <button className="btn btn-outline-white" onClick={onLogout} title={`Signed in as ${userEmail} — log out`}>
+            <LogOut size={15} /> Log out
           </button>
         </div>
       </div>

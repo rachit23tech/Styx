@@ -9,6 +9,11 @@ export interface CategorizationOutcome {
     source: "rule" | "ai" | "manual";
 }
 
+/** Uppercases a description and splits it into alphanumeric words. */
+function toWords(description: string): string[] {
+    return description.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, " ").split(/\s+/).filter(Boolean);
+}
+
 /**
  * Extracts a normalized main merchant pattern token from a transaction description.
  * e.g., "Swiggy Order #1234" -> "SWIGGY"
@@ -17,56 +22,82 @@ export function extractMerchantPattern(description: string): string {
     const cleaned = description.trim().toUpperCase().replace(/[^A-Z0-9\s]/g, " ");
     const words = cleaned.split(/\s+/).filter(w => w.length > 2);
     // Return first meaningful word (e.g., SWIGGY, ZOMATO, UBER, AMAZON, WALMART, NETFLIX)
-    return words[0] || cleaned.slice(0, 15) || "UNKNOWN";
+    return words[0] || cleaned.trim().slice(0, 15) || "UNKNOWN";
 }
 
-// ─── In-Memory Cache with TTL ────────────────────────────────────────
-// Prevents fetching all rules and categories from MongoDB on every single request.
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// ─── Per-User In-Memory Cache with TTL ───────────────────────────────
+// Prevents fetching a user's rules and categories from MongoDB on every request.
 const CACHE_TTL_MS = 60_000; // 60 seconds
+const MAX_CACHED_USERS = 500;
 
-let cachedRules: any[] | null = null;
-let rulesLastFetch = 0;
+interface UserCache {
+    rules: any[] | null;
+    rulesLastFetch: number;
+    categories: any[] | null;
+    categoriesLastFetch: number;
+}
 
-let cachedCategories: any[] | null = null;
-let categoriesLastFetch = 0;
+const cache = new Map<string, UserCache>();
 
-async function getCachedRules(): Promise<any[]> {
-    const now = Date.now();
-    if (!cachedRules || now - rulesLastFetch > CACHE_TTL_MS) {
-        cachedRules = await CategorizationRule.find().populate("category_id").lean();
-        rulesLastFetch = now;
+function getUserCache(userId: string): UserCache {
+    let entry = cache.get(userId);
+    if (!entry) {
+        if (cache.size >= MAX_CACHED_USERS) cache.clear();
+        entry = { rules: null, rulesLastFetch: 0, categories: null, categoriesLastFetch: 0 };
+        cache.set(userId, entry);
     }
-    return cachedRules;
+    return entry;
 }
 
-async function getCachedCategories(): Promise<any[]> {
+async function getCachedRules(userId: string): Promise<any[]> {
+    const entry = getUserCache(userId);
     const now = Date.now();
-    if (!cachedCategories || now - categoriesLastFetch > CACHE_TTL_MS) {
-        cachedCategories = await Category.find().lean();
-        categoriesLastFetch = now;
+    if (!entry.rules || now - entry.rulesLastFetch > CACHE_TTL_MS) {
+        entry.rules = await CategorizationRule.find({ user_id: userId }).lean();
+        entry.rulesLastFetch = now;
     }
-    return cachedCategories;
+    return entry.rules;
 }
 
-/** Call this to invalidate caches after rule/category mutations */
-export function invalidateCategorizerCache(): void {
-    cachedRules = null;
-    cachedCategories = null;
+async function getCachedCategories(userId: string): Promise<any[]> {
+    const entry = getUserCache(userId);
+    const now = Date.now();
+    if (!entry.categories || now - entry.categoriesLastFetch > CACHE_TTL_MS) {
+        entry.categories = await Category.find({ user_id: userId }).lean();
+        entry.categoriesLastFetch = now;
+    }
+    return entry.categories;
 }
 
-export async function categorize(description: string, amount: number): Promise<CategorizationOutcome> {
-    const categories = await getCachedCategories();
+/** Invalidate one user's cache after rule/category mutations (all users if no id is given) */
+export function invalidateCategorizerCache(userId?: string): void {
+    if (userId) {
+        cache.delete(userId);
+    } else {
+        cache.clear();
+    }
+}
+
+export async function categorize(userId: string, description: string, amount: number): Promise<CategorizationOutcome> {
+    const categories = await getCachedCategories(userId);
     if (!categories || categories.length === 0) {
-        throw new Error("No categories exist in the database");
+        throw new Error("No categories exist yet. Create a category first.");
     }
 
     const descUpper = description.toUpperCase();
+    const descWords = toWords(description);
 
-    // Tier 1: Check categorization rules (cached)
-    const rules = await getCachedRules();
+    // Tier 1: Check categorization rules (cached). A rule matches a whole word,
+    // so a rule for "PAY" does not fire on "PAYTM" or "PAYMENT".
+    const rules = await getCachedRules(userId);
     for (const rule of rules) {
-        if (rule.pattern && descUpper.includes(rule.pattern.toUpperCase())) {
-            const cat = categories.find(c => c._id.toString() === (rule.category_id as any)?._id?.toString() || c._id.toString() === rule.category_id.toString());
+        const pattern = String(rule.pattern || "").toUpperCase();
+        if (!pattern) continue;
+        const matches = /\s/.test(pattern) ? descUpper.includes(pattern) : descWords.includes(pattern);
+        if (matches) {
+            const cat = categories.find(c => c._id.toString() === String(rule.category_id));
             if (cat) {
                 return {
                     categoryId: cat._id as Types.ObjectId,
@@ -78,23 +109,26 @@ export async function categorize(description: string, amount: number): Promise<C
         }
     }
 
-    // Tier 2: LLM Fallback (Gemini 1.5 Flash)
+    // Tier 2: LLM Fallback (Gemini)
     const categoryNames = categories.map(c => c.name);
     const geminiResult = await geminiCategorize(description, amount, categoryNames);
+    const suggested = (geminiResult.categoryName || "").trim().slice(0, 100);
+    const suggestedLower = suggested.toLowerCase();
 
-    let matchedCat = categories.find(
-        c => c.name.toLowerCase() === geminiResult.categoryName.toLowerCase()
-    ) || categories.find(
-        c => geminiResult.categoryName.toLowerCase().includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(geminiResult.categoryName.toLowerCase())
-    );
+    let matchedCat = suggested
+        ? categories.find(c => c.name.toLowerCase() === suggestedLower)
+            || categories.find(c => suggestedLower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(suggestedLower))
+        : undefined;
 
-    // If category does not exist in MongoDB yet, auto-create it dynamically based on expense intent!
-    if (!matchedCat && geminiResult.categoryName) {
-        const cleanName = geminiResult.categoryName.trim();
-        let newCatDoc = await Category.findOne({ name: new RegExp(`^${cleanName}$`, "i") });
+    // If the suggested category does not exist for this user yet, create it
+    if (!matchedCat && suggested) {
+        let newCatDoc = await Category.findOne({
+            user_id: userId,
+            name: new RegExp(`^${escapeRegExp(suggested)}$`, "i")
+        });
         if (!newCatDoc) {
-            newCatDoc = await Category.create({ name: cleanName });
-            invalidateCategorizerCache();
+            newCatDoc = await Category.create({ name: suggested, user_id: userId });
+            invalidateCategorizerCache(userId);
         }
         matchedCat = {
             _id: newCatDoc._id,
@@ -103,11 +137,12 @@ export async function categorize(description: string, amount: number): Promise<C
     }
 
     if (!matchedCat) {
-        matchedCat = categories[0];
+        matchedCat = categories.find(c => c.name.toLowerCase() === "general") || categories[0];
     }
 
     // Log the LLM fallback call
     const log = new LlmFallbackLog({
+        user_id: userId,
         prompt_tokens: geminiResult.promptTokens,
         response_category: matchedCat.name,
         latency_ms: geminiResult.latencyMs

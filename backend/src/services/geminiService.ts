@@ -13,6 +13,9 @@ export interface AdvisorExplanationResult {
     promptTokens: number;
 }
 
+// Model is configurable so a retired model can be swapped via env var without a code change.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+
 // ─── Singleton Gemini Client ─────────────────────────────────────────
 // Instantiated once at module load, reused across all requests.
 let genAIInstance: GoogleGenerativeAI | null = null;
@@ -24,7 +27,7 @@ function getModel(): GenerativeModel | null {
 
     if (!genAIInstance) {
         genAIInstance = new GoogleGenerativeAI(apiKey);
-        modelInstance = genAIInstance.getGenerativeModel({ model: "gemini-1.5-flash" });
+        modelInstance = genAIInstance.getGenerativeModel({ model: GEMINI_MODEL });
     }
     return modelInstance;
 }
@@ -48,20 +51,24 @@ export async function categorizeExpense(
     const model = getModel();
 
     if (!model) {
-        // Deterministic mock fallback when Gemini API key is missing
-        const descUpper = description.toUpperCase();
+        // Deterministic keyword fallback when Gemini API key is missing.
+        // Keywords match whole words, so "Coca Cola" is not read as "OLA" (a cab).
+        const words = new Set(description.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean));
+        const hasAny = (keywords: string[]) => keywords.some(k => words.has(k));
+        const pick = (matchers: string[], fallbackName: string) =>
+            availableCategories.find(c => matchers.some(m => c.toLowerCase().includes(m))) || fallbackName;
         let selectedCategory = "General";
 
-        if (descUpper.includes("IRCTC") || descUpper.includes("RAIL") || descUpper.includes("TRAIN") || descUpper.includes("UBER") || descUpper.includes("OLA") || descUpper.includes("CAB") || descUpper.includes("FUEL") || descUpper.includes("PETROL") || descUpper.includes("METRO") || descUpper.includes("FLIGHT") || descUpper.includes("INDIGO") || descUpper.includes("MAKEMYTRIP") || descUpper.includes("IXIGO") || descUpper.includes("BUS")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("transport") || c.toLowerCase().includes("travel")) || "Transportation";
-        } else if (descUpper.includes("SWIGGY") || descUpper.includes("ZOMATO") || descUpper.includes("REST") || descUpper.includes("FOOD") || descUpper.includes("DINER") || descUpper.includes("COFFEE") || descUpper.includes("STARBUCKS") || descUpper.includes("PIZZA") || descUpper.includes("DOMINOS")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("food") || c.toLowerCase().includes("dining")) || "Food & Dining";
-        } else if (descUpper.includes("BILL") || descUpper.includes("POWER") || descUpper.includes("WIFI") || descUpper.includes("INTERNET") || descUpper.includes("AIRTEL") || descUpper.includes("JIO") || descUpper.includes("ELECTRICITY")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("util")) || "Utilities";
-        } else if (descUpper.includes("AMAZON") || descUpper.includes("FLIPKART") || descUpper.includes("SHOP") || descUpper.includes("STORE") || descUpper.includes("CLOTH") || descUpper.includes("MYNTRA")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("shop")) || "Shopping";
-        } else if (descUpper.includes("NETFLIX") || descUpper.includes("SPOTIFY") || descUpper.includes("CINEMA") || descUpper.includes("MOVIE") || descUpper.includes("BOOKMYSHOW")) {
-            selectedCategory = availableCategories.find(c => c.toLowerCase().includes("entertain")) || "Entertainment";
+        if (hasAny(["IRCTC", "RAIL", "RAILWAY", "RAILWAYS", "TRAIN", "UBER", "OLA", "RAPIDO", "CAB", "CABS", "TAXI", "FUEL", "PETROL", "DIESEL", "METRO", "FLIGHT", "FLIGHTS", "INDIGO", "MAKEMYTRIP", "IXIGO", "BUS"])) {
+            selectedCategory = pick(["transport", "travel"], "Transportation");
+        } else if (hasAny(["SWIGGY", "ZOMATO", "RESTAURANT", "RESTAURANTS", "FOOD", "DINER", "DINING", "DINNER", "LUNCH", "BREAKFAST", "COFFEE", "CAFE", "STARBUCKS", "PIZZA", "DOMINOS"])) {
+            selectedCategory = pick(["food", "dining"], "Food & Dining");
+        } else if (hasAny(["BILL", "BILLS", "POWER", "WIFI", "INTERNET", "BROADBAND", "AIRTEL", "JIO", "ELECTRICITY", "RECHARGE"])) {
+            selectedCategory = pick(["util"], "Utilities");
+        } else if (hasAny(["AMAZON", "FLIPKART", "SHOP", "SHOPPING", "STORE", "CLOTH", "CLOTHES", "CLOTHING", "MYNTRA", "MALL"])) {
+            selectedCategory = pick(["shop"], "Shopping");
+        } else if (hasAny(["NETFLIX", "SPOTIFY", "HOTSTAR", "CINEMA", "MOVIE", "MOVIES", "BOOKMYSHOW"])) {
+            selectedCategory = pick(["entertain"], "Entertainment");
         } else {
             selectedCategory = availableCategories.find(c => c.toLowerCase() === "general") || availableCategories[0] || "General";
         }
@@ -118,9 +125,9 @@ export async function explainSpendingStats(statsSummary: any): Promise<AdvisorEx
     const startTime = Date.now();
 
     const generateMockExplanation = (): AdvisorExplanationResult => {
-        const total = statsSummary.totalCurrentMonthSpend || 0;
-        const mom = statsSummary.totalMomPercentageChange || 0;
-        const top = statsSummary.topCategory ? `${statsSummary.topCategory.name} (₹${statsSummary.topCategory.amount.toFixed(2)})` : "N/A";
+        const total = Number(statsSummary.totalCurrentMonthSpend) || 0;
+        const mom = Number(statsSummary.totalMomPercentageChange) || 0;
+        const top = statsSummary.topCategory ? `${statsSummary.topCategory.name} (₹${Number(statsSummary.topCategory.amount || 0).toFixed(2)})` : "N/A";
 
         let summaryText = `In ${statsSummary.period}, total spending reached ₹${total.toFixed(2)}. `;
         if (mom > 0) {

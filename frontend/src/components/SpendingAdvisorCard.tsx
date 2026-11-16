@@ -150,7 +150,7 @@ export const SpendingAdvisorCard: React.FC<SpendingAdvisorCardProps> = ({ curren
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-teal)', fontWeight: 700, fontSize: '14px', marginBottom: '8px' }}>
-            Gemini 1.5 Flash Advice
+            Gemini Advice
           </div>
           <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-primary)', marginBottom: '12px' }}>
             {advisorData.explanation}

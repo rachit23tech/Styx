@@ -10,12 +10,16 @@ Styx is an intelligent personal financial management platform that combines dete
 Styx uses a tiered categorization architecture designed for high throughput, low latency, and operational cost efficiency:
 - **Tier 1 — Deterministic Rule Matcher**: Evaluates transaction description patterns against indexed merchant rules in MongoDB using case-insensitive regex matching. Executes in $<5\text{ms}$ with zero LLM API cost.
 - **Tier 2 — Adaptive Feedback Loop & Rule Promotion**: When a user overrides an auto-categorized expense category, Styx logs a `Correction` audit event. Upon reaching $N = 3$ corrections for the same merchant pattern to the same target category, the pattern is automatically promoted into a permanent `CategorizationRule`.
-- **Tier 3 — LLM Fallback (Google Gemini 1.5 Flash)**: Invoked only when no deterministic rule matches. Returns the optimal category based on transaction context, description, and amount.
+- **Tier 3 — LLM Fallback (Google Gemini)**: Invoked only when no deterministic rule matches. Returns the optimal category based on transaction context, description, and amount.
 - **Observability Audit Log**: Logs every LLM invocation with token counts (`promptTokens`), execution latency (`latencyMs`), response category, and timestamp in `LlmFallbackLog`.
 
-### 2. Analytics & Spending Advisor
+### 2. User Accounts
+- **Email + password sign-up and login**: Passwords are stored as bcrypt hashes; sessions use a signed JWT sent as a `Bearer` token.
+- **Per-user data isolation**: Expenses, categories, learned rules, corrections and AI logs are all scoped to the signed-in user.
+
+### 3. Analytics & Spending Advisor
 - **Deterministic Metrics Computation**: Monthly totals, 3-month trailing averages, and Month-over-Month (MoM) percentage shifts are computed directly in MongoDB via native Aggregation Pipelines (`$group`, `$match`).
-- **AI Financial Insights**: Computed aggregate statistics (never raw transaction records) are passed to Google Gemini 1.5 Flash to generate actionable spending recommendations without model hallucinations.
+- **AI Financial Insights**: Computed aggregate statistics (never raw transaction records) are passed to Google Gemini to generate actionable spending recommendations without model hallucinations.
 
 ---
 
@@ -36,7 +40,7 @@ Styx uses a tiered categorization architecture designed for high throughput, low
 | :--- | :--- | :--- |
 | **Backend API** | Node.js, Express, TypeScript | RESTful API backend & business logic |
 | **Database** | MongoDB, Mongoose ODM | Document storage, indexes, & aggregation pipelines |
-| **AI Integration** | Google Gemini API (`gemini-1.5-flash`) | Contextual fallback categorization & spending advice |
+| **AI Integration** | Google Gemini API (model set by `GEMINI_MODEL`, default `gemini-2.5-flash`) | Contextual fallback categorization & spending advice |
 | **Frontend** | React, Vite, TypeScript, Lucide Icons | Responsive interactive dashboard |
 | **Testing** | Jest, Supertest, `mongodb-memory-server` | Integration & schema validation suite |
 
@@ -58,7 +62,7 @@ Styx/
 │   │   │   └── advisor.ts         # Analytics summary & AI advisor endpoints
 │   │   ├── services/
 │   │   │   ├── categorizer.ts     # Tiered categorization pipeline
-│   │   │   ├── geminiService.ts   # Gemini 1.5 Flash API client
+│   │   │   ├── geminiService.ts   # Gemini API client
 │   │   │   └── statsEngine.ts     # MongoDB aggregation analytics engine
 │   │   └── index.ts               # Express server initialization
 │   └── package.json
@@ -74,7 +78,8 @@ Styx/
 
 ## 🗄️ Database Schemas
 
-- **`Category`**: Unique expense classification tags (`name`).
+- **`User`**: Account (`email`, `passwordHash`). Every record below belongs to one user (`userId`) and is only visible to that user.
+- **`Category`**: Expense classification tags, unique per user (`name`).
 - **`Expense`**: Primary ledger records (`amount`, `description`, `date`, `categoryId`, `paymentMethod`, `autoCategorized`, `createdAt`).
 - **`CategorizationRule`**: Pattern-to-category mapping (`pattern`, `categoryId`, `confidenceScore`).
 - **`Correction`**: Category override audit trail (`expenseId`, `oldCategoryId`, `newCategoryId`, `merchantPattern`, `correctedAt`).
@@ -102,6 +107,7 @@ Styx/
    PORT=5000
    MONGODB_URI=mongodb://127.0.0.1:27017/expense-tracker
    GEMINI_API_KEY=your_gemini_api_key_here
+   JWT_SECRET=a_long_random_string
    ```
 
 3. **Install Dependencies & Build All Packages**:

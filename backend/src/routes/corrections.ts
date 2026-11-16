@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import mongoose from "mongoose";
-import { CategorizationRule, Correction, Expense, LlmFallbackLog } from "../db/models";
+import { CategorizationRule, Category, Correction, Expense, LlmFallbackLog } from "../db/models";
 import { extractMerchantPattern, invalidateCategorizerCache } from "../services/categorizer";
 import { validateObjectId, sanitize } from "../middleware/validation";
 
@@ -12,15 +12,20 @@ const router = express.Router();
  */
 router.post("/expenses/:id/correct", validateObjectId(), async (req: Request, res: Response) => {
     try {
+        const userId = req.userId!;
         const { id } = req.params;
-        const body = sanitize(req.body);
+        const body = sanitize(req.body) || {};
         const { new_category_id } = body;
 
-        if (!new_category_id || !mongoose.Types.ObjectId.isValid(new_category_id)) {
+        if (typeof new_category_id !== "string" || !mongoose.Types.ObjectId.isValid(new_category_id)) {
             return res.status(400).json({ error: "A valid new_category_id is required" });
         }
+        const newCategory = await Category.findOne({ _id: new_category_id, user_id: userId });
+        if (!newCategory) {
+            return res.status(400).json({ error: "Category not found" });
+        }
 
-        const expense = await Expense.findById(id);
+        const expense = await Expense.findOne({ _id: id, user_id: userId });
         if (!expense) {
             return res.status(404).json({ error: "Expense not found" });
         }
@@ -29,44 +34,47 @@ router.post("/expenses/:id/correct", validateObjectId(), async (req: Request, re
         const merchant_pattern = extractMerchantPattern(expense.description);
 
         // Update expense category
-        expense.category_id = new_category_id;
+        expense.category_id = newCategory._id as mongoose.Types.ObjectId;
         expense.auto_categorized = false;
         await expense.save();
 
         // Create Correction entry
         const correction = new Correction({
+            user_id: userId,
             expense_id: expense._id,
             old_category_id,
-            new_category_id,
+            new_category_id: newCategory._id,
             merchant_pattern
         });
         await correction.save();
 
-        // Count corrections matching merchant_pattern & new_category_id
+        // Count this user's corrections matching merchant_pattern & new_category_id
         const correctionCount = await Correction.countDocuments({
+            user_id: userId,
             merchant_pattern,
-            new_category_id
+            new_category_id: newCategory._id
         });
 
         let promotedRule = false;
         if (correctionCount >= 3) {
             // Check if rule already exists for this pattern
-            const existingRule = await CategorizationRule.findOne({ pattern: merchant_pattern });
+            const existingRule = await CategorizationRule.findOne({ user_id: userId, pattern: merchant_pattern });
             if (!existingRule) {
                 const newRule = new CategorizationRule({
+                    user_id: userId,
                     pattern: merchant_pattern,
-                    category_id: new_category_id,
+                    category_id: newCategory._id,
                     confidence_score: 1
                 });
                 await newRule.save();
                 promotedRule = true;
-                invalidateCategorizerCache();
-            } else if (existingRule.category_id.toString() !== new_category_id.toString()) {
-                existingRule.category_id = new_category_id;
+                invalidateCategorizerCache(userId);
+            } else if (existingRule.category_id.toString() !== String(newCategory._id)) {
+                existingRule.category_id = newCategory._id as mongoose.Types.ObjectId;
                 existingRule.confidence_score += 1;
                 await existingRule.save();
                 promotedRule = true;
-                invalidateCategorizerCache();
+                invalidateCategorizerCache(userId);
             }
         }
 
@@ -85,11 +93,11 @@ router.post("/expenses/:id/correct", validateObjectId(), async (req: Request, re
 
 /**
  * GET /api/llm-logs
- * Returns audit log history of LLM fallback calls.
+ * Returns audit log history of the user's LLM fallback calls.
  */
-router.get("/llm-logs", async (_req: Request, res: Response) => {
+router.get("/llm-logs", async (req: Request, res: Response) => {
     try {
-        const logs = await LlmFallbackLog.find().sort({ created_at: -1 }).limit(50);
+        const logs = await LlmFallbackLog.find({ user_id: req.userId! }).sort({ created_at: -1 }).limit(50);
         return res.json(logs);
     } catch (error: any) {
         return res.status(500).json({ error: error.message || "Failed to fetch LLM fallback logs" });
@@ -98,11 +106,11 @@ router.get("/llm-logs", async (_req: Request, res: Response) => {
 
 /**
  * GET /api/rules
- * Returns all active categorization rules.
+ * Returns all of the user's active categorization rules.
  */
-router.get("/rules", async (_req: Request, res: Response) => {
+router.get("/rules", async (req: Request, res: Response) => {
     try {
-        const rules = await CategorizationRule.find().populate("category_id");
+        const rules = await CategorizationRule.find({ user_id: req.userId! }).populate("category_id");
         return res.json(rules);
     } catch (error: any) {
         return res.status(500).json({ error: error.message || "Failed to fetch categorization rules" });

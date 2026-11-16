@@ -19,7 +19,8 @@ export interface StatsSummary {
     categories: CategoryStat[];
 }
 
-export async function computeStatsSummary(year: number, month: number): Promise<StatsSummary> {
+export async function computeStatsSummary(userId: string, year: number, month: number): Promise<StatsSummary> {
+    const ownerId = new mongoose.Types.ObjectId(userId);
     const periodStr = `${year}-${String(month).padStart(2, "0")}`;
 
     // Date ranges
@@ -33,7 +34,7 @@ export async function computeStatsSummary(year: number, month: number): Promise<
     const trailing3End = new Date(Date.UTC(year, month - 1, 0, 23, 59, 59, 999));
 
     // Fetch all active categories
-    const allCategories = await Category.find();
+    const allCategories = await Category.find({ user_id: ownerId });
     const catMap = new Map<string, string>();
     allCategories.forEach(c => catMap.set(c._id.toString(), c.name));
 
@@ -41,6 +42,7 @@ export async function computeStatsSummary(year: number, month: number): Promise<
     const currentAgg = await Expense.aggregate([
         {
             $match: {
+                user_id: ownerId,
                 date: { $gte: currentMonthStart, $lte: currentMonthEnd }
             }
         },
@@ -65,6 +67,7 @@ export async function computeStatsSummary(year: number, month: number): Promise<
     const prevAgg = await Expense.aggregate([
         {
             $match: {
+                user_id: ownerId,
                 date: { $gte: prevMonthStart, $lte: prevMonthEnd }
             }
         },
@@ -89,6 +92,7 @@ export async function computeStatsSummary(year: number, month: number): Promise<
     const trailingAgg = await Expense.aggregate([
         {
             $match: {
+                user_id: ownerId,
                 date: { $gte: trailing3Start, $lte: trailing3End }
             }
         },

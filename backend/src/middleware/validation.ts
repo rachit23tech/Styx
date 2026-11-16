@@ -34,3 +34,23 @@ export function sanitize<T>(value: T): T {
     }
     return value;
 }
+
+/**
+ * Parses a "YYYY-MM" string. Returns null unless it is a real month.
+ */
+export function parseMonth(value: unknown): { year: number; month: number } | null {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}$/.test(value)) return null;
+    const [year, month] = value.split("-").map(Number);
+    if (year < 2000 || year > 2100 || month < 1 || month > 12) return null;
+    return { year, month };
+}
+
+/**
+ * Parses a client-supplied date (ISO string or timestamp).
+ * Returns null if it is not a valid date.
+ */
+export function parseDate(value: unknown): Date | null {
+    if (typeof value !== "string" && typeof value !== "number") return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+}

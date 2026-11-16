@@ -10,7 +10,7 @@ This repository is configured as a **unified single-folder project** ready for 1
 1. Push this repository to GitHub / GitLab / Bitbucket.
 2. Log into [Netlify Dashboard](https://app.netlify.com/) and click **"Add new site"** -> **"Import an existing project"**.
 3. Select your repository.
-4. Netlify will automatically detect [netlify.toml](file:///c:/Users/arora/Desktop/Styx/netlify.toml) with these settings:
+4. Netlify will automatically detect [netlify.toml](netlify.toml) with these settings:
    - **Build Command**: `npm run build:frontend`
    - **Publish directory**: `frontend/dist`
    - **Node Version**: `20`
@@ -41,5 +41,8 @@ npx netlify-cli deploy --dir=frontend/dist --prod
 4. Set Environment Variables:
    - `MONGODB_URI`: `mongodb+srv://user:password@cluster.mongodb.net/expense-tracker`
    - `GEMINI_API_KEY`: `your-google-gemini-api-key`
+   - `GEMINI_MODEL`: *(optional)* Gemini model ID, defaults to `gemini-2.5-flash`
    - `NODE_ENV`: `production`
    - `CORS_ORIGIN`: `https://your-netlify-app-name.netlify.app`
+   - `JWT_SECRET`: **required in production** — a long random string used to sign login tokens (e.g. the output of `openssl rand -hex 32`). The server refuses to start without it.
+   - `LEGACY_OWNER_EMAIL`: *(optional)* email of the account that should inherit expenses created before user accounts existed. That data is assigned the first time this account registers or logs in.

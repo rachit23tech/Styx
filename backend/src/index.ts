@@ -12,27 +12,38 @@ import categoryRouter from "./routes/categories";
 import expenseRouter from "./routes/expenses";
 import correctionsRouter from "./routes/corrections";
 import advisorRouter from "./routes/advisor";
+import authRouter from "./routes/auth";
+import { requireAuth } from "./middleware/auth";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const IS_PROD = process.env.NODE_ENV === "production";
 
+// ─── Trust the first proxy hop (Render / Railway / Heroku) ───────────
+// Needed so req.ip is the real client IP and rate limiting is per-client.
+app.set("trust proxy", 1);
+
 // ─── Security Headers ────────────────────────────────────────────────
 app.use(helmet());
 
-// ─── CORS — dynamic origin reflection for production & development ─
-const corsOrigin = process.env.CORS_ORIGIN;
+// ─── CORS — allow-list from CORS_ORIGIN (comma-separated); open if unset ─
+const normalizeOrigin = (o: string) => o.trim().replace(/\/+$/, "").toLowerCase();
+const allowedOrigins = (process.env.CORS_ORIGIN || "")
+    .split(",")
+    .map(normalizeOrigin)
+    .filter(Boolean);
 app.use(
     cors({
         origin: (origin, callback) => {
-            if (!corsOrigin || !origin) {
+            // No CORS_ORIGIN configured, or a non-browser request (curl, health checks): allow
+            if (allowedOrigins.length === 0 || !origin) {
                 return callback(null, true);
             }
-            const allowedOrigins = corsOrigin.split(",").map((o) => o.trim());
-            if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+            if (allowedOrigins.includes("*") || allowedOrigins.includes(normalizeOrigin(origin))) {
                 return callback(null, true);
             }
-            return callback(null, true);
+            console.warn(`CORS: blocked request from origin ${origin}`);
+            return callback(null, false);
         },
         credentials: true
     })
@@ -57,12 +68,22 @@ const globalLimiter = rateLimit({
 });
 app.use(globalLimiter);
 
+// Gemini-backed endpoints: creating an expense (auto-categorisation) and the advisor
 const aiLimiter = rateLimit({
     windowMs: 60 * 1000,     // 1 minute
-    max: IS_PROD ? 10 : 60,  // 10 AI calls/min in production
+    max: IS_PROD ? 20 : 120, // 20 AI-backed calls/min in production
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: "AI endpoint rate limit exceeded. Please wait before trying again." },
+});
+
+// Login / sign-up: slows down password guessing
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,  // 15 minutes
+    max: IS_PROD ? 30 : 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts. Please try again later." },
 });
 
 // ─── Health Check ────────────────────────────────────────────────────
@@ -71,15 +92,28 @@ app.get("/api/health", (_req, res) => {
 });
 
 // ─── Routes ──────────────────────────────────────────────────────────
-app.use("/api/categories", categoryRouter);
-app.use("/api/expenses", expenseRouter);
-app.use("/api/stats", aiLimiter, advisorRouter);
-app.use("/api", correctionsRouter);
+app.use("/api/auth", authLimiter, authRouter);
+
+// Stricter limit on the two endpoints that can call Gemini
+app.post("/api/expenses", aiLimiter);
+app.post("/api/stats/explain", aiLimiter);
+
+// Everything below requires a signed-in user
+app.use("/api/categories", requireAuth, categoryRouter);
+app.use("/api/expenses", requireAuth, expenseRouter);
+app.use("/api/stats", requireAuth, advisorRouter);
+app.use("/api", requireAuth, correctionsRouter);
 
 // ─── Start Server ────────────────────────────────────────────────────
 let server: ReturnType<typeof app.listen>;
 
 const startServer = async () => {
+    // Login tokens are signed with JWT_SECRET; never run production without one
+    if (IS_PROD && !process.env.JWT_SECRET) {
+        console.error("FATAL: JWT_SECRET is not set. Set it to a long random string in the environment and redeploy.");
+        process.exit(1);
+    }
+
     try {
         await connectDB();
 

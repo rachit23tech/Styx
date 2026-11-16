@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Category, Expense } from './types';
+import { AuthUser, Category, Expense } from './types';
 import {
   fetchCategories,
   fetchExpenses,
@@ -8,6 +8,10 @@ import {
   deleteExpense,
   createCategory,
   deleteCategory,
+  fetchCurrentUser,
+  getToken,
+  logout,
+  setUnauthorizedHandler,
 } from './api/client';
 import { Navbar } from './components/Navbar';
 import { DashboardSummary } from './components/DashboardSummary';
@@ -18,11 +22,15 @@ import { CorrectionModal } from './components/CorrectionModal';
 import { LlmLogViewer } from './components/LlmLogViewer';
 import { SpendingAdvisorCard } from './components/SpendingAdvisorCard';
 import { ReportsView } from './components/ReportsView';
+import { AuthScreen } from './components/AuthScreen';
 
 export const App: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState<string>(
     new Date().toISOString().substring(0, 7)
   );
+  // Signed-in user. `authChecked` is false until a saved session has been verified.
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authChecked, setAuthChecked] = useState<boolean>(() => !getToken());
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [categories, setCategories] = useState<Category[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -54,9 +62,42 @@ export const App: React.FC = () => {
     }
   };
 
+  // Restore a saved session on first load, and return to the login screen
+  // whenever the server rejects the session.
   useEffect(() => {
-    loadData();
-  }, [currentMonth]);
+    let cancelled = false;
+    setUnauthorizedHandler(() => setUser(null));
+    if (getToken()) {
+      fetchCurrentUser()
+        .then((u) => {
+          if (!cancelled) setUser(u);
+        })
+        .catch(() => {
+          /* invalid or expired session, or server unreachable — show login */
+        })
+        .finally(() => {
+          if (!cancelled) setAuthChecked(true);
+        });
+    }
+    return () => {
+      cancelled = true;
+      setUnauthorizedHandler(null);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user) loadData();
+  }, [currentMonth, user]);
+
+  const handleLogout = () => {
+    logout();
+    setUser(null);
+    setCategories([]);
+    setExpenses([]);
+    setError(null);
+    setToastMessage(null);
+    setActiveTab('overview');
+  };
 
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -100,9 +141,14 @@ export const App: React.FC = () => {
 
   const handleDeleteExpense = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this expense?')) {
-      await deleteExpense(id);
-      showToast('Expense deleted.');
-      await loadData();
+      try {
+        setError(null);
+        await deleteExpense(id);
+        showToast('Expense deleted.');
+        await loadData();
+      } catch (err: any) {
+        setError(err.message || 'Failed to delete the expense. Please try again.');
+      }
     }
   };
 
@@ -125,6 +171,20 @@ export const App: React.FC = () => {
     await loadData();
   };
 
+  if (!authChecked) {
+    return (
+      <div className="app-container">
+        <div style={{ textAlign: 'center', padding: '64px', color: 'var(--text-muted)' }}>
+          Loading Styx...
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen onAuthenticated={setUser} />;
+  }
+
   return (
     <div className="app-container">
       {/* Top Navbar */}
@@ -139,6 +199,8 @@ export const App: React.FC = () => {
         }}
         onOpenCategoryModal={() => setIsCategoryModalOpen(true)}
         onOpenLlmLogsModal={() => setIsLlmLogsModalOpen(true)}
+        userEmail={user.email}
+        onLogout={handleLogout}
       />
 
       {toastMessage && (
